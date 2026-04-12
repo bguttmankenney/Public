@@ -1,0 +1,131 @@
+
+<h2 class="sr-only">Interactive Bitcoin mining simulator: try different nonces to find a hash below the difficulty target</h2>
+<div style="padding: 1rem 0; max-width: 600px;">
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem;">
+    <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 8px;">Block data</p>
+    <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+      <tr><td style="color: var(--color-text-secondary); padding: 4px 0; width: 120px;">Previous hash</td><td style="padding: 4px 0; font-family: var(--font-mono); font-size: 12px;">0000a1b2c3d4e5f6</td></tr>
+      <tr><td style="color: var(--color-text-secondary); padding: 4px 0;">Transaction</td><td style="padding: 4px 0;">Alice pays Bob 1 BTC</td></tr>
+      <tr><td style="color: var(--color-text-secondary); padding: 4px 0;">Timestamp</td><td style="padding: 4px 0;">Apr 12, 2026</td></tr>
+    </table>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; margin: 0 0 1rem;">
+    <label style="font-size: 14px; color: var(--color-text-secondary); min-width: 50px;">Nonce</label>
+    <input type="range" min="0" max="999" value="0" id="nonce" style="flex: 1;" step="1" />
+    <span style="font-size: 16px; font-weight: 500; min-width: 36px; font-family: var(--font-mono);" id="nonce-val">0</span>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; margin: 0 0 1rem;">
+    <label style="font-size: 14px; color: var(--color-text-secondary); min-width: 100px;">Difficulty</label>
+    <select id="diff" style="font-size: 13px;">
+      <option value="1">Easy (starts with 0)</option>
+      <option value="2" selected>Medium (starts with 00)</option>
+      <option value="3">Hard (starts with 000)</option>
+      <option value="4">Very hard (starts with 0000)</option>
+    </select>
+  </div>
+
+  <div style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem;">
+    <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 4px;">Resulting hash</p>
+    <p id="hash-out" style="font-family: var(--font-mono); font-size: 14px; word-break: break-all; margin: 0; line-height: 1.6;"></p>
+  </div>
+
+  <div id="status" style="text-align: center; font-size: 14px; font-weight: 500; padding: 8px; border-radius: var(--border-radius-md); margin-bottom: 1rem;"></div>
+
+  <div style="display: flex; gap: 8px;">
+    <button id="try-btn" style="flex: 1;">Try this nonce</button>
+    <button id="auto-btn" style="flex: 1;">Auto-mine</button>
+  </div>
+
+  <div style="margin-top: 1rem;">
+    <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">Attempts: <span id="attempts" style="font-weight: 500; color: var(--color-text-primary);">0</span></p>
+  </div>
+</div>
+
+<script>
+const blockData = "0000a1b2c3d4e5f6|AlicepaysBob1BTC|20260412|";
+let attempts = 0;
+let autoInterval = null;
+
+async function simpleHash(str) {
+  const enc = new TextEncoder().encode(str);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function getDifficulty() {
+  return parseInt(document.getElementById('diff').value);
+}
+
+function checkHash(hash) {
+  const d = getDifficulty();
+  return hash.startsWith('0'.repeat(d));
+}
+
+async function mine(nonce) {
+  const input = blockData + nonce;
+  const hash = await simpleHash(input);
+  attempts++;
+  document.getElementById('attempts').textContent = attempts;
+
+  const d = getDifficulty();
+  const prefix = hash.substring(0, d);
+  const rest = hash.substring(d);
+  const valid = checkHash(hash);
+
+  const el = document.getElementById('hash-out');
+  el.innerHTML = `<span style="color: ${valid ? 'var(--color-text-success)' : 'var(--color-text-danger)'}; font-weight: 500;">${prefix}</span>${rest}`;
+
+  const status = document.getElementById('status');
+  if (valid) {
+    status.textContent = 'Block mined! Valid hash found!';
+    status.style.background = 'var(--color-background-success)';
+    status.style.color = 'var(--color-text-success)';
+    if (autoInterval) { clearInterval(autoInterval); autoInterval = null; document.getElementById('auto-btn').textContent = 'Auto-mine'; }
+  } else {
+    status.textContent = 'Invalid — hash does not meet difficulty target';
+    status.style.background = 'var(--color-background-danger)';
+    status.style.color = 'var(--color-text-danger)';
+  }
+  return valid;
+}
+
+document.getElementById('nonce').addEventListener('input', function() {
+  document.getElementById('nonce-val').textContent = this.value;
+});
+
+document.getElementById('try-btn').addEventListener('click', function() {
+  const n = parseInt(document.getElementById('nonce').value);
+  mine(n);
+});
+
+document.getElementById('auto-btn').addEventListener('click', function() {
+  if (autoInterval) {
+    clearInterval(autoInterval);
+    autoInterval = null;
+    this.textContent = 'Auto-mine';
+    return;
+  }
+  this.textContent = 'Stop';
+  let n = parseInt(document.getElementById('nonce').value);
+  autoInterval = setInterval(async () => {
+    n++;
+    if (n > 999) n = 0;
+    document.getElementById('nonce').value = n;
+    document.getElementById('nonce-val').textContent = n;
+    const found = await mine(n);
+    if (found) { clearInterval(autoInterval); autoInterval = null; document.getElementById('auto-btn').textContent = 'Auto-mine'; }
+  }, 80);
+});
+
+document.getElementById('diff').addEventListener('change', function() {
+  attempts = 0;
+  document.getElementById('attempts').textContent = '0';
+  document.getElementById('status').textContent = '';
+  document.getElementById('status').style.background = 'none';
+  document.getElementById('hash-out').textContent = '';
+});
+
+mine(0);
+</script>
